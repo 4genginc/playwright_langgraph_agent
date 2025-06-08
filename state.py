@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, List
 
+
 @dataclass
 class BrowserState:
     # Navigation and page info
@@ -11,7 +12,7 @@ class BrowserState:
 
     # Task control
     task_description: str = ""
-    task_type: str = ""         # e.g. "extract", "interact", "search"
+    task_type: str = ""  # e.g. "extract", "interact", "search"
     current_step: str = "initialize"
 
     # User interaction
@@ -32,3 +33,6 @@ class BrowserState:
     # Completion status
     task_completed: bool = False
     success: bool = False
+
+    # Step counting for loop prevention
+    step_count: int = 0

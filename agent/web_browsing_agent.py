@@ -10,6 +10,7 @@ from browser.playwright_manager import PlaywrightManager
 
 logger = logging.getLogger(__name__)
 
+
 class WebBrowsingAgent:
     def __init__(self, openai_api_key: str, headless: bool = True):
         self.llm = ChatOpenAI(
@@ -20,6 +21,8 @@ class WebBrowsingAgent:
         )
         self.browser = PlaywrightManager(headless=headless)
         self.graph = self._build_graph()
+        # Add step counter to prevent infinite loops
+        self.max_steps = 20
 
     def _ensure_state(self, candidate, fallback):
         # Defensive: Make sure handlers always return BrowserState
@@ -46,6 +49,17 @@ class WebBrowsingAgent:
             return "analyze_page"
 
         def route_after_analysis(state: BrowserState) -> str:
+            # Add step limit check to prevent infinite loops
+            if not hasattr(state, 'step_count'):
+                state.step_count = 0
+            state.step_count += 1
+
+            if state.step_count >= self.max_steps:
+                logger.warning(f"Maximum steps ({self.max_steps}) reached, forcing completion")
+                state.task_completed = True
+                state.error_message = f"Task stopped after {self.max_steps} steps to prevent infinite loop"
+                return "handle_error"
+
             if state.error_message:
                 return "handle_error"
             elif state.task_completed:
@@ -60,14 +74,31 @@ class WebBrowsingAgent:
                 return "extract_data"
 
         def route_after_interaction(state: BrowserState) -> str:
+            # Add step limit check
+            if not hasattr(state, 'step_count'):
+                state.step_count = 0
+            state.step_count += 1
+
+            if state.step_count >= self.max_steps:
+                logger.warning("Maximum steps reached, completing task")
+                state.task_completed = True
+                return "complete_task"
+
             if state.error_message and state.retry_count >= state.max_retries:
                 return "handle_error"
             elif state.task_completed:
                 return "complete_task"
             else:
+                # Limit re-analysis to prevent infinite loops
+                if state.step_count > 10:
+                    logger.warning("Too many analysis cycles, forcing completion")
+                    state.task_completed = True
+                    return "complete_task"
                 return "analyze_page"
 
+        # Create graph with recursion limit configuration
         graph = StateGraph(BrowserState)
+
         # Register async node handlers directly (no lambda!)
         graph.add_node("initialize_browser", self._initialize_browser)
         graph.add_node("navigate", self._navigate_to_page)
@@ -87,11 +118,17 @@ class WebBrowsingAgent:
         graph.add_conditional_edges("search_content", route_after_interaction)
         graph.add_edge("complete_task", END)
         graph.add_edge("handle_error", END)
+
+        # Compile the graph (recursion limit will be set during execution)
         return graph.compile()
 
     # Patch: Call _ensure_state at the end of every handler to ensure state type.
     async def _initialize_browser(self, state: BrowserState) -> BrowserState:
         logger.info("Initializing browser...")
+        # Initialize step counter
+        if not hasattr(state, 'step_count'):
+            state.step_count = 0
+
         success = await self.browser.start()
         if success:
             state.current_step = "browser_ready"
@@ -139,10 +176,15 @@ class WebBrowsingAgent:
             {chr(10).join(elements_summary)}
             PAGE CONTENT PREVIEW:
             {state.page_content[:800]}
+
+            IMPORTANT: You must decide if this task can be completed with the current page content.
+            For extraction tasks, if you can see the requested content, mark the task as completed.
+
             Based on the task and available page elements, determine:
             1. Is the task complete? (yes/no)
             2. What should be the next action?
             3. Any specific elements to interact with?
+
             Respond in JSON format:
             {{
                 "task_completed": true/false,
@@ -155,7 +197,8 @@ class WebBrowsingAgent:
             logger.debug(f"analysis_prompt: {analysis_prompt}")
 
             messages = [
-                SystemMessage(content="You are a web browsing assistant. Analyze pages and make decisions based on the given task."),
+                SystemMessage(
+                    content="You are a web browsing assistant. Analyze pages and make decisions based on the given task. ALWAYS set task_completed to true if you can see the requested content on the page."),
                 HumanMessage(content=analysis_prompt)
             ]
             logger.info("Invoking LLM... (self.llm.ainvoke)")
@@ -180,7 +223,15 @@ class WebBrowsingAgent:
                 state.click_targets = decision.get("target_elements", [])
                 reasoning = decision.get("reasoning", "No reasoning provided")
                 state.navigation_history.append(f"Analysis: {reasoning}")
-                logger.info(f"Analysis complete. Next action: {state.task_type}")
+                logger.info(
+                    f"Analysis complete. Task completed: {state.task_completed}, Next action: {state.task_type}")
+
+                # Force completion for extraction tasks if we have content
+                if state.task_type == "extract" and not state.task_completed:
+                    if state.page_elements and len(state.page_elements) > 0:
+                        logger.info("Forcing task completion due to available page content")
+                        state.task_completed = True
+
             except json.JSONDecodeError as e:
                 logger.error(f"JSON decode error: {e}. Raw LLM response: {response.content!r}")
                 content = response.content.lower()
@@ -190,6 +241,9 @@ class WebBrowsingAgent:
                     state.task_type = "interact"
                 else:
                     state.task_type = "extract"
+                    # For extraction tasks, assume we can complete with current content
+                    if state.page_elements and len(state.page_elements) > 0:
+                        state.task_completed = True
                 state.navigation_history.append(f"Analysis (fallback): {response.content[:100]}")
         except Exception as e:
             logger.error(f"Page analysis failed: {e}", exc_info=True)
@@ -222,15 +276,15 @@ class WebBrowsingAgent:
             if lists and isinstance(lists, list):
                 extracted["lists"] = [{"text": l.get("text", "")} for l in lists[:3]]
             state.extracted_data = extracted
-            state.task_completed = True
+            state.task_completed = True  # ALWAYS mark as completed after extraction
             state.success = True
             state.navigation_history.append(f"Data extracted: {len(extracted['elements'])} elements")
             logger.info(f"Extraction complete: {len(extracted['elements'])} elements found")
         except Exception as e:
             logger.error(f"Data extraction failed: {e}")
             state.error_message = f"Extraction failed: {str(e)}"
+            state.task_completed = True  # Complete even if extraction failed
         return self._ensure_state(state, state)
-
 
     async def _interact_with_page(self, state: BrowserState) -> BrowserState:
         logger.info("Interacting with page elements...")
@@ -246,9 +300,16 @@ class WebBrowsingAgent:
                     await asyncio.sleep(1)
             state.navigation_history.extend(interaction_results)
             await asyncio.sleep(2)  # Let page settle
+
+            # Mark interaction tasks as completed after one round
+            if state.task_type == "interact":
+                state.task_completed = True
+                state.success = True
+
         except Exception as e:
             logger.error(f"Page interaction failed: {e}")
             state.error_message = f"Interaction failed: {str(e)}"
+            state.task_completed = True  # Complete even if interaction failed
         return self._ensure_state(state, state)
 
     async def _search_content(self, state: BrowserState) -> BrowserState:
@@ -269,12 +330,13 @@ class WebBrowsingAgent:
                 "search_terms": search_terms,
                 "timestamp": datetime.now().isoformat()
             }
-            state.task_completed = True
+            state.task_completed = True  # ALWAYS mark search as completed
             state.success = True
             state.navigation_history.append(f"Search completed for terms: {search_terms}")
         except Exception as e:
             logger.error(f"Content search failed: {e}")
             state.error_message = f"Search failed: {str(e)}"
+            state.task_completed = True  # Complete even if search failed
         return self._ensure_state(state, state)
 
     async def _complete_task(self, state: BrowserState) -> BrowserState:
@@ -317,10 +379,15 @@ class WebBrowsingAgent:
             task_type=task_type,
             form_data=form_data or {}
         )
+        # Initialize step counter
+        initial_state.step_count = 0
+
         logger.info(f"Starting task: {task}")
         logger.info(f"Target URL: {url}")
         try:
-            final_state = await self.graph.ainvoke(initial_state)
+            # Set recursion limit during execution using the correct API
+            config = {"recursion_limit": 50}
+            final_state = await self.graph.ainvoke(initial_state, config=config)
             # Defensive: if final_state is not BrowserState, try to coerce it
             final_state = self._ensure_state(final_state, initial_state)
             result = {
@@ -343,5 +410,7 @@ class WebBrowsingAgent:
                 "task": task,
                 "url": url,
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "extracted_data": {},  # Always include this key
+                "navigation_history": []
             }
