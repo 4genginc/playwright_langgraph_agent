@@ -22,6 +22,20 @@ playwright_langgraph_agent/
 
 ```
 
+## contents
+
+-   `agent/web_browsing_agent.py`
+
+### Purpose
+
+-   Orchestrates the web browsing agent’s state machine.
+-   Handles all task logic and decision-making (state nodes, transitions).
+-   Bridges your **browser automation** (via `PlaywrightManager`) and **LLM reasoning** (via `ChatOpenAI`).
+-   Provides a clean interface: `.execute_task(url, task, ...)`.
+
+
+
+
 ## How to Use
 
 -  ** Import using relative paths** within the package.
