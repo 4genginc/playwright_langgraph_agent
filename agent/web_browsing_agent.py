@@ -78,8 +78,8 @@ class WebBrowsingAgent:
 
         return graph.compile()
 
-
-    # Node handlers:
+    # Node Handlers (State Functions)
+    # 1. Browser Initialization
     async def _initialize_browser(self, state: BrowserState) -> BrowserState:
         logger.info("Initializing browser...")
         success = await self.browser.start()
@@ -90,10 +90,229 @@ class WebBrowsingAgent:
             state.error_message = "Failed to initialize browser"
         return state
 
-
+    # 2. Navigate to Page
     async def _navigate_to_page(self, state: BrowserState) -> BrowserState:
-        # ...
-    # (other state node methods...)
+        logger.info(f"Navigating to: {state.target_url}")
+        result = await self.browser.navigate(state.target_url)
+        if result["success"]:
+            state.current_url = result["url"]
+            state.page_title = result["title"]
+            state.page_content = result["content"][:2000]
+            state.current_step = "page_loaded"
+            state.navigation_history.append(f"Successfully navigated to {result['url']}")
+            # Screenshot
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = f"screenshot_{timestamp}.png"
+            state.screenshot_path = await self.browser.take_screenshot(screenshot_path)
+        else:
+            state.error_message = result["error"]
+            state.retry_count += 1
+        return state
 
+    # 3. Analyze Page with LLM
+    async def _analyze_page(self, state: BrowserState) -> BrowserState:
+        logger.info("Analyzing page content...")
+        try:
+            state.page_elements = await self.browser.extract_elements()
+            elements_summary = [
+                f"- {elem['tag']}: {elem['text'][:50]}..."
+                for elem in state.page_elements[:15]
+            ]
+            analysis_prompt = f"""
+            TASK: {state.task_description}
+            TASK TYPE: {state.task_type}
+            CURRENT PAGE:
+            Title: {state.page_title}
+            URL: {state.current_url}
+            AVAILABLE ELEMENTS:
+            {chr(10).join(elements_summary)}
+            PAGE CONTENT PREVIEW:
+            {state.page_content[:800]}
+            Based on the task and available page elements, determine:
+            1. Is the task complete? (yes/no)
+            2. What should be the next action?
+            3. Any specific elements to interact with?
+            Respond in JSON format:
+            {{
+                "task_completed": true/false,
+                "next_action": "extract/interact/search/complete",
+                "reasoning": "...",
+                "target_elements": ["selector1", "selector2"],
+                "confidence": 0.0-1.0
+            }}
+            """
+            messages = [
+                SystemMessage(content="You are a web browsing assistant. Analyze pages and make decisions based on the given task."),
+                HumanMessage(content=analysis_prompt)
+            ]
+            response = await self.llm.ainvoke(messages)
+            try:
+                decision = json.loads(response.content)
+                state.task_completed = decision.get("task_completed", False)
+                state.task_type = decision.get("next_action", "extract")
+                state.click_targets = decision.get("target_elements", [])
+                reasoning = decision.get("reasoning", "No reasoning provided")
+                state.navigation_history.append(f"Analysis: {reasoning}")
+                logger.info(f"Analysis complete. Next action: {state.task_type}")
+            except json.JSONDecodeError:
+                content = response.content.lower()
+                if "complete" in content or "finished" in content:
+                    state.task_completed = True
+                elif "click" in content or "button" in content:
+                    state.task_type = "interact"
+                else:
+                    state.task_type = "extract"
+                state.navigation_history.append(f"Analysis (fallback): {response.content[:100]}")
+        except Exception as e:
+            logger.error(f"Page analysis failed: {e}")
+            state.error_message = f"Analysis failed: {str(e)}"
+        return state
+
+    # 4. Extract Data
+    async def _extract_data(self, state: BrowserState) -> BrowserState:
+        logger.info("Extracting data from page...")
+        try:
+            extracted = {
+                "title": state.page_title,
+                "url": state.current_url,
+                "timestamp": datetime.now().isoformat(),
+                "elements": []
+            }
+            for element in state.page_elements:
+                if element["text"] and len(element["text"].strip()) > 5:
+                    extracted["elements"].append({
+                        "type": element["tag"],
+                        "text": element["text"],
+                        "attributes": element.get("attributes", {})
+                    })
+            tables = await self.browser.extract_elements("table")
+            if tables:
+                extracted["tables"] = [{"text": t["text"]} for t in tables[:3]]
+            lists = await self.browser.extract_elements("ul, ol")
+            if lists:
+                extracted["lists"] = [{"text": l["text"]} for l in lists[:3]]
+            state.extracted_data = extracted
+            state.task_completed = True
+            state.success = True
+            state.navigation_history.append(f"Data extracted: {len(extracted['elements'])} elements")
+            logger.info(f"Extraction complete: {len(extracted['elements'])} elements found")
+        except Exception as e:
+            logger.error(f"Data extraction failed: {e}")
+            state.error_message = f"Extraction failed: {str(e)}"
+        return state
+
+    # 5. Interact with Page
+    async def _interact_with_page(self, state: BrowserState) -> BrowserState:
+        logger.info("Interacting with page elements...")
+        try:
+            interaction_results = []
+            if state.form_data:
+                form_result = await self.browser.fill_form(state.form_data)
+                interaction_results.append(f"Form filled: {form_result}")
+            for target in state.click_targets:
+                if target and isinstance(target, str):
+                    click_result = await self.browser.click_element(target, wait_for_navigation=False)
+                    interaction_results.append(f"Clicked {target}: {click_result}")
+                    await asyncio.sleep(1)
+            state.navigation_history.extend(interaction_results)
+            await asyncio.sleep(2)  # Let page settle
+        except Exception as e:
+            logger.error(f"Page interaction failed: {e}")
+            state.error_message = f"Interaction failed: {str(e)}"
+        return state
+
+    # 6. Search Content
+    async def _search_content(self, state: BrowserState) -> BrowserState:
+        logger.info("Searching page content...")
+        try:
+            search_terms = []
+            task_words = state.task_description.lower().split()
+            for word in task_words:
+                if len(word) > 3 and word not in ['find', 'search', 'look', 'page', 'website']:
+                    search_terms.append(word)
+            search_results = {}
+            for term in search_terms[:5]:
+                results = await self.browser.search_text(term)
+                if results:
+                    search_results[term] = results
+            state.extracted_data = {
+                "search_results": search_results,
+                "search_terms": search_terms,
+                "timestamp": datetime.now().isoformat()
+            }
+            state.task_completed = True
+            state.success = True
+            state.navigation_history.append(f"Search completed for terms: {search_terms}")
+        except Exception as e:
+            logger.error(f"Content search failed: {e}")
+            state.error_message = f"Search failed: {str(e)}"
+        return state
+
+    # 7. Task Complete & Error Handling
+    async def _complete_task(self, state: BrowserState) -> BrowserState:
+        logger.info("Completing task...")
+        state.current_step = "completed"
+        state.task_completed = True
+        if not state.success:
+            state.success = len(state.extracted_data) > 0 or len(state.navigation_history) > 1
+        completion_summary = {
+            "task": state.task_description,
+            "success": state.success,
+            "final_url": state.current_url,
+            "steps_taken": len(state.navigation_history),
+            "data_extracted": bool(state.extracted_data),
+            "screenshot": state.screenshot_path
+        }
+        state.navigation_history.append(f"Task completed: {completion_summary}")
+        await self.browser.cleanup()
+        return state
+
+    async def _handle_error(self, state: BrowserState) -> BrowserState:
+        logger.error(f"Handling error: {state.error_message}")
+        state.current_step = "error"
+        if state.retry_count < state.max_retries and "navigation" in state.error_message.lower():
+            state.retry_count += 1
+            state.error_message = ""
+            state.navigation_history.append(f"Retrying... (attempt {state.retry_count})")
+            await asyncio.sleep(2)
+        else:
+            state.task_completed = True
+            state.success = False
+            state.navigation_history.append(f"Task failed after {state.retry_count} retries: {state.error_message}")
+            await self.browser.cleanup()
+        return state
+    
+    # 8. Main Entry Method
     async def execute_task(self, url: str, task: str, task_type: str = "extract", form_data: dict = None) -> dict:
-        # ...
+        initial_state = BrowserState(
+            target_url=url,
+            task_description=task,
+            task_type=task_type,
+            form_data=form_data or {}
+        )
+        logger.info(f"Starting task: {task}")
+        logger.info(f"Target URL: {url}")
+        try:
+            final_state = await self.graph.ainvoke(initial_state)
+            result = {
+                "success": final_state.success,
+                "task": task,
+                "url": url,
+                "final_url": final_state.current_url,
+                "extracted_data": final_state.extracted_data,
+                "navigation_history": final_state.navigation_history,
+                "screenshot": final_state.screenshot_path,
+                "error": final_state.error_message,
+                "timestamp": datetime.now().isoformat()
+            }
+            return result
+        except Exception as e:
+            logger.error(f"Task execution failed: {e}")
+            await self.browser.cleanup()
+            return {
+                "success": False,
+                "task": task,
+                "url": url,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
