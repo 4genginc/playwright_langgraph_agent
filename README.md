@@ -9,7 +9,6 @@ A modular, production-grade and pedagogical template for building autonomous, LL
 ```plaintext
 playwright_langgraph_agent/
 ├── .env                      # API keys and environment variables (never commit this!)
-├── requirements.txt                      
 ├── main.py                   # Entry point; handles CLI/menu logic
 ├── config.py                 # Env setup, logging, config handling
 ├── state.py                  # BrowserState dataclass and state definitions
@@ -62,7 +61,7 @@ playwright_langgraph_agent/
 | Module/File                        | Status   | Description                                            |
 | ---------------------------------- | -------- | ------------------------------------------------------ |
 | `main.py`                          | 🟢 Draft | CLI entry/menu to run agent tasks                      |
-| `config.py`                        | 🟡 TODO  | Env loading, logging config, project constants         |
+| `config.py`                        | 🟢 Done  | Env loading, logging config, project constants         |
 | `state.py`                         | 🟢 Done  | Agent state/dataclass for all memory, results, errors  |
 | `agent/web_browsing_agent.py`      | 🟢 Done  | Core LLM agent (LangGraph orchestrated, async, tested) |
 | `browser/playwright_manager.py`    | 🟢 Done  | Async browser actions—navigate, extract, click, etc.   |
