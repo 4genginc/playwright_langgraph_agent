@@ -81,7 +81,15 @@ class WebBrowsingAgent:
 
     # Node handlers:
     async def _initialize_browser(self, state: BrowserState) -> BrowserState:
-        # ...
+        logger.info("Initializing browser...")
+        success = await self.browser.start()
+        if success:
+            state.current_step = "browser_ready"
+            state.navigation_history.append("Browser initialized successfully")
+        else:
+            state.error_message = "Failed to initialize browser"
+        return state
+
 
     async def _navigate_to_page(self, state: BrowserState) -> BrowserState:
         # ...
