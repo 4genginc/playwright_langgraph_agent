@@ -1,15 +1,16 @@
 # 🦜 Playwright LangGraph Agent
 
-A **pedagogical, modular tutorial and starter template** for building autonomous web-browsing AI agents using Playwright (browser automation), LangGraph (LLM state orchestration), and OpenAI (LLM reasoning).
+A modular, production-grade and pedagogical template for building autonomous, LLM-powered web-browsing agents using Python, Playwright (browser automation), LangGraph (state orchestration), and OpenAI (LLM reasoning).
 
 ---
 
-## 📦 1. Directory Layout (Modular Split)
+## 📁 Project Directory Layout
 
 ```plaintext
 playwright_langgraph_agent/
 ├── main.py                   # Entry point; handles CLI/menu logic
 ├── config.py                 # Env setup, logging, config handling
+├── .env                     # API keys and environment variables (never commit this!)
 ├── state.py                  # BrowserState dataclass and state definitions
 ├── agent/
 │   └── web_browsing_agent.py # WebBrowsingAgent (LangGraph logic)
@@ -21,150 +22,126 @@ playwright_langgraph_agent/
 │   └── demo_tasks.py         # Example use cases
 ├── tests/
 │   ├── test_playwright.py    # Playwright browser sanity check
+│   ├── test_playwright_manager.py # PlaywrightManager async logic test
 │   └── test_web_browsing_agent.py # Full agent workflow test
 └── utils.py                  # Misc. helpers/utilities
 ```
 
 ---
 
-## 📚 2. What Is the Agent? (`agent/web_browsing_agent.py`)
+## 🚀 Quickstart
 
-### **Purpose**
+1. **Install requirements:**
 
-* Orchestrates a full web-browsing state machine with LangGraph.
-* Delegates browser actions to `PlaywrightManager` (browser/automation logic).
-* Injects reasoning and action-selection via `ChatOpenAI` (LLM API).
-* Provides an async `.execute_task(url, task, ...)` for end-to-end automation.
+   ```bash
+   python -m venv .venv && source .venv/bin/activate
+   pip install -r requirements.txt
+   playwright install  # downloads browser drivers
+   ```
+2. **Set your OpenAI API key** in `.env` or your shell:
 
-### **Pedagogical Highlights**
+   ```bash
+   export OPENAI_API_KEY=sk-...
+   ```
+3. **Run the CLI agent:**
 
-* **Separation of concerns:** Browser logic vs agent logic vs state vs toolkit.
-* **Graph-based orchestration:** Each state node is a function; routing logic is explicit.
-* **Extendable:** New agent states or browser actions are easy to add.
+   ```bash
+   python main.py
+   ```
+4. **Run tests:**
+
+   ```bash
+   pytest tests/
+   ```
 
 ---
 
-## 🚀 3. How To Use (Quickstart)
+## 📚 Module-by-Module Overview
 
-### **Environment Setup**
+| Module/File                        | Status   | Description                                            |
+| ---------------------------------- | -------- | ------------------------------------------------------ |
+| `main.py`                          | 🟢 Draft | CLI entry/menu to run agent tasks                      |
+| `config.py`                        | 🟡 TODO  | Env loading, logging config, project constants         |
+| `state.py`                         | 🟢 Done  | Agent state/dataclass for all memory, results, errors  |
+| `agent/web_browsing_agent.py`      | 🟢 Done  | Core LLM agent (LangGraph orchestrated, async, tested) |
+| `browser/playwright_manager.py`    | 🟢 Done  | Async browser actions—navigate, extract, click, etc.   |
+| `toolkit/web_toolkit.py`           | 🟡 TODO  | Batch processing, CSV/JSON exports, result aggregation |
+| `examples/demo_tasks.py`           | 🟡 TODO  | Example workflows for learning/testing                 |
+| `tests/test_playwright.py`         | 🟢 Done  | Playwright install/smoke test                          |
+| `tests/test_playwright_manager.py` | 🟢 Done  | Modular browser backend test                           |
+| `tests/test_web_browsing_agent.py` | 🟢 Done  | Full agent (LLM+browser) pipeline test                 |
+| `utils.py`                         | 🟡 TODO  | Misc utilities/helpers                                 |
 
-```bash
-# Clone repo & enter dir
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-playwright install  # This downloads browser drivers
+Legend: 🟢 Done | 🟡 TODO | 🟠 In Progress
+
+---
+
+## 💡 How To Extend
+
+* **Add new agent actions** in `web_browsing_agent.py` and state fields in `state.py`.
+* **Batch process** via `toolkit/web_toolkit.py` (write `run_batch`, `export_csv`, etc).
+* **Demo workflows**: Place in `examples/demo_tasks.py` for reproducible experiments.
+* **Advanced features:** Add support for Anthropic/Gemini LLMs, browser auth, file upload, etc.
+
+---
+
+## 🧑‍💻 Example: CLI Agent Usage (`main.py`)
+
+```python
+import os
+import asyncio
+from agent.web_browsing_agent import WebBrowsingAgent
+from state import BrowserState
+
+def get_api_key():
+    return os.getenv("OPENAI_API_KEY")
+
+async def main():
+    api_key = get_api_key()
+    if not api_key:
+        print("Please set OPENAI_API_KEY")
+        return
+    agent = WebBrowsingAgent(api_key, headless=True)
+    url = input("Enter target URL: ")
+    task = input("Enter task description: ")
+    task_type = input("Task type (extract/interact/search): ") or "extract"
+    result = await agent.execute_task(url, task, task_type)
+    print("=== RESULT ===")
+    print(result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-* Set your OpenAI API key in environment or .env:
+---
+
+## 🧪 Testing
+
+* **Browser layer only:**
 
   ```bash
-  export OPENAI_API_KEY=sk-...
+  pytest tests/test_playwright.py
+  pytest tests/test_playwright_manager.py
+  ```
+* **Full agent pipeline:**
+
+  ```bash
+  pytest tests/test_web_browsing_agent.py
   ```
 
-### **Running the Agent in Code**
+---
 
-```python
-from agent.web_browsing_agent import WebBrowsingAgent
-import os, asyncio
+## 📖 Further Learning & Reference
 
-api_key = os.getenv("OPENAI_API_KEY")
-agent = WebBrowsingAgent(api_key, headless=True)
-result = asyncio.run(agent.execute_task(
-    url="https://news.ycombinator.com",
-    task="Extract top 5 headlines and links",
-    task_type="extract"
-))
-print(result)
-```
-
-### **Running the CLI (main.py)**
-
-```bash
-python main.py
-```
-
-* Follow menu prompts for scraping, form filling, custom tasks, etc.
-
-### **Testing**
-
-**Smoke test browser only:**
-
-```bash
-pytest tests/test_playwright.py
-```
-
-**Test full agent orchestration:**
-
-```bash
-pytest tests/test_web_browsing_agent.py
-```
+* See canvas: Pedagogical Guides for `web_browsing_agent.py`, `playwright_manager.py`, and `state.py` for deep-dive documentation.
+* [Playwright Python Docs](https://playwright.dev/python/)
+* [LangGraph Docs](https://langchain-ai.github.io/langgraph/)
+* [LangChain Docs](https://python.langchain.com/)
 
 ---
 
-## 🧠 4. Pedagogical Guide to the Agent
+## 🤝 Credits & Inspiration
 
-### **Core Components**
-
-* `state.py` - Defines the dataclass for agent state (task, navigation, memory, extracted data, etc.)
-* `browser/playwright_manager.py` - Encapsulates all Playwright (browser) actions, keeping browser logic isolated.
-* `agent/web_browsing_agent.py` - LLM-powered, LangGraph-based agent orchestration. Handles routing, invokes browser manager, and parses LLM outputs.
-* `toolkit/web_toolkit.py` - Batch utilities (e.g., run agent on multiple URLs, export to CSV).
-
-### **Agent Workflow**
-
-1. **Initialize browser** (headless by default)
-2. **Navigate** to target URL
-3. **Analyze page** with LLM (determines if/what to extract, click, or fill)
-4. **Extract data, interact, or search** (based on LLM decision)
-5. **Loop/route** until task is complete
-6. **Cleanup** browser, return results
-
-### **Testing/Debugging Pedagogy**
-
-* **Direct Playwright test:** Always validate browser automation in isolation (`test_playwright.py`).
-* **Agent integration test:** Use async pytest to ensure agent + browser + LLM workflow (`test_web_browsing_agent.py`).
-* **Best practice:** Test lower layers before agent layer; stub browser manager for fast tests.
-
----
-
-## 🏗️ 5. Next Steps & Extending
-
-* Add new agent states/nodes for more actions (file upload, advanced forms, etc.)
-* Integrate more LLM providers (Anthropic, Gemini, etc.) via LangChain.
-* Batch process with `toolkit/web_toolkit.py` or add database integration.
-* Add CI tests and coverage reports.
-
----
-
-## 📝 6. Example Agent Test (for pytest)
-
-```python
-import os, asyncio
-from agent.web_browsing_agent import WebBrowsingAgent
-
-def test_web_browsing_agent_extract():
-    api_key = os.getenv("OPENAI_API_KEY")
-    assert api_key, "OPENAI_API_KEY must be set"
-
-    async def run_agent():
-        agent = WebBrowsingAgent(api_key, headless=True)
-        result = await agent.execute_task(
-            url="https://news.ycombinator.com",
-            task="Extract top 3 headlines and their links",
-            task_type="extract"
-        )
-        assert isinstance(result, dict)
-        assert "success" in result
-
-    asyncio.run(run_agent())
-```
-
----
-
-## 🤝 7. Attribution & Inspiration
-
-* Inspired by Ed Donner’s LLM engineering course, OpenAI, LangChain, LangGraph, Playwright, and the modern Python ecosystem.
-
----
-
-**For questions, extensions, or detailed walkthroughs of any file/module, see source or ask the project author!**
+* Ed Donner (LLM Engineering)
+* OpenAI, LangChain, LangGraph, Playwright Python Community
+* Modular/agent design patterns from the AI engineering world

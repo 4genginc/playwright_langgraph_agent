@@ -1,14 +1,23 @@
-import asyncio
 import os
-from config import setup_environment, check_dependencies
-from examples import demo_tasks
+import asyncio
+from agent.web_browsing_agent import WebBrowsingAgent
+from state import BrowserState
 
-async def enhanced_main():
-    # Copy CLI/menu logic from your script
-    # Replace calls to in-file functions with:
-    # await demo_tasks.example_web_scraping()
-    # await demo_tasks.example_form_interaction()
-    # ...
+def get_api_key():
+    return os.getenv("OPENAI_API_KEY")
+
+async def main():
+    api_key = get_api_key()
+    if not api_key:
+        print("Please set OPENAI_API_KEY")
+        return
+    agent = WebBrowsingAgent(api_key, headless=True)
+    url = input("Enter target URL: ")
+    task = input("Enter task description: ")
+    task_type = input("Task type (extract/interact/search): ") or "extract"
+    result = await agent.execute_task(url, task, task_type)
+    print("=== RESULT ===")
+    print(result)
 
 if __name__ == "__main__":
-    asyncio.run(enhanced_main())
+    asyncio.run(main())
