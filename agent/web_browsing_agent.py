@@ -9,10 +9,18 @@ from browser.playwright_manager import PlaywrightManager
 
 logger = logging.getLogger(__name__)
 
-
+# Class Structure
 class WebBrowsingAgent:
     def __init__(self, openai_api_key: str, headless: bool = True):
-        # ... initialization
+        self.llm = ChatOpenAI(
+            model="gpt-4",
+            api_key=openai_api_key,
+            temperature=0.1,
+            max_tokens=1500
+        )
+        self.browser = PlaywrightManager(headless=headless)
+        self.graph = self._build_graph()
+
 
     def _build_graph(self) -> StateGraph:
         # ... build your LangGraph
