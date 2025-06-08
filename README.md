@@ -8,9 +8,10 @@ A modular, production-grade and pedagogical template for building autonomous, LL
 
 ```plaintext
 playwright_langgraph_agent/
+├── .env                      # API keys and environment variables (never commit this!)
+├── requirements.txt                      
 ├── main.py                   # Entry point; handles CLI/menu logic
 ├── config.py                 # Env setup, logging, config handling
-├── .env                     # API keys and environment variables (never commit this!)
 ├── state.py                  # BrowserState dataclass and state definitions
 ├── agent/
 │   └── web_browsing_agent.py # WebBrowsingAgent (LangGraph logic)

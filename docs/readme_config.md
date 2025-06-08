@@ -1,3 +1,10 @@
+# 🛠️ config.py – Starter Template & Usage Guide
+
+Centralizes all environment, API key, and logging configuration for your agent project. Import and use in `main.py` and other entry scripts.
+
+---
+
+```python
 # config.py
 
 import os
@@ -35,5 +42,31 @@ def setup_logging(level="INFO", log_file=None):
         handlers=handlers
     )
 
+# Example: add custom config helper
+
 def get_default_model():
     return os.getenv("DEFAULT_MODEL", "gpt-4o")
+```
+
+---
+
+## 🧑‍💻 Usage Example (in main.py)
+
+```python
+from config import load_env, get_api_key, setup_logging
+
+load_env()
+setup_logging("INFO")
+api_key = get_api_key()
+```
+
+---
+
+## 🔬 Test Example (pytest style)
+
+```python
+def test_env_loading(monkeypatch):
+    import config
+    monkeypatch.setenv("OPENAI_API_KEY", "dummy-key")
+    assert config.get_api_key() == "dummy-key"
+```
