@@ -1,3 +1,10 @@
+# toolkit/web\_toolkit.py – Batch Processing & Export Guide
+
+A pedagogical and production-ready template for batch-running your agent, saving results, and enabling analysis.
+
+---
+
+```
 """
 toolkit/web_toolkit.py
 
@@ -56,3 +63,30 @@ async def run_batch(agent, url_tasks, max_concurrent=3):
 
     results = await asyncio.gather(*(run_one(t) for t in url_tasks))
     return results
+```
+
+---
+
+## 🧪 Quick Test Example (pytest)
+
+```
+def test_export_csv_and_json(tmp_path):
+    from toolkit import web_toolkit
+    dummy = [
+        {"url": "https://a.com", "success": True, "data": {"k": 1}},
+        {"url": "https://b.com", "success": False, "error": "not found"}
+    ]
+    csv_path = tmp_path / "dummy.csv"
+    json_path = tmp_path / "dummy.json"
+    web_toolkit.export_csv(dummy, csv_path)
+    web_toolkit.export_json(dummy, json_path)
+    assert csv_path.exists() and json_path.exists()
+```
+
+---
+
+## 💡 Extension Ideas
+
+* Add `export_xlsx` (Excel) if needed
+* Add progress bar with `tqdm`
+* Support streaming batch runs for huge input lists

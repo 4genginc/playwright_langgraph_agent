@@ -2,12 +2,12 @@ import os
 import asyncio
 from agent.web_browsing_agent import WebBrowsingAgent
 from state import BrowserState
-from config import load_env, get_api_key, setup_logging
 
+from config import load_env
 load_env()
-setup_logging("INFO")
 
-api_key = get_api_key("OPENAI_API_KEY")
+def get_api_key():
+    return os.getenv("OPENAI_API_KEY")
 
 async def main():
     api_key = get_api_key()
