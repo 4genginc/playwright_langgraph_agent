@@ -1,21 +1,33 @@
-# Core libraries
-langgraph==0.4.8
-langchain==0.1.17
-langchain-openai==0.1.7
+# Fixed requirements with compatible versions
+# Core LangGraph and LangChain ecosystem
+langgraph>=0.4.8
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-core>=0.3.43
+
+# Browser automation
 playwright>=1.43.0
+
+# Core dependencies
 pydantic>=2.6
 python-dotenv>=1.0
-
-# For the tools/schema used in your script
 tqdm>=4.66
 nest_asyncio>=1.6
 
-# Optional: for development/robust async in notebooks/scripts
-ipykernel>=6.29
+# Data handling
+pandas>=2.0.0
+numpy>=1.24.0
 
-# For logging and typing (usually included in stdlib)
-# logging
-# typing
+# Web interface
+gradio>=4.0.0
+pillow>=10.0.0
 
-# You can pin Python version for reproducibility if desired:
-# python_version >= 3.9
+# Optional: Enhanced features
+matplotlib>=3.7.0
+plotly>=5.15.0
+openpyxl>=3.1.0
+rich>=13.0.0
+
+# Development and testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0

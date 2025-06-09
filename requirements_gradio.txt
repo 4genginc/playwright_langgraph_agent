@@ -1,0 +1,19 @@
+# Extended requirements for Gradio UI
+# Include all base requirements
+-r requirements.txt
+
+# Gradio and UI dependencies
+gradio>=4.0.0
+pandas>=2.0.0
+pillow>=10.0.0
+
+# Optional: Enhanced data visualization
+matplotlib>=3.7.0
+plotly>=5.15.0
+
+# Optional: Additional file format support
+openpyxl>=3.1.0
+xlsxwriter>=3.1.0
+
+# Optional: Enhanced logging and monitoring
+rich>=13.0.0
