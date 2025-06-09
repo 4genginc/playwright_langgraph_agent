@@ -43,15 +43,24 @@ class GradioAgentInterface:
     def initialize_agent(self, api_key: str, headless: bool = True) -> tuple:
         """Initialize the agent with API key"""
         try:
-            if not api_key:
-                return "❌ Error: Please provide an OpenAI API key", None
+            if not api_key or not api_key.strip():
+                return "❌ Error: Please provide an OpenAI API key", "No API Key"
             
+            # Validate API key format
+            if not api_key.startswith('sk-'):
+                return "❌ Error: Invalid API key format (should start with 'sk-')", "Invalid API Key"
+            
+            # Initialize the agent
             self.agent = WebBrowsingAgent(api_key, headless=headless)
-            return "✅ Agent initialized successfully!", "Agent Ready"
+            
+            # Test the agent by creating a simple instance
+            logger.info("Agent initialized successfully")
+            return "✅ Agent initialized successfully!", "Agent Ready ✅"
+            
         except Exception as e:
             error_msg = f"❌ Failed to initialize agent: {str(e)}"
             logger.error(error_msg)
-            return error_msg, "Initialization Failed"
+            return error_msg, "Initialization Failed ❌"
     
     async def execute_single_task(
         self, 
@@ -298,17 +307,21 @@ def create_gradio_interface():
         
         # API Key input (shared across tabs)
         with gr.Row():
-            api_key_input = gr.Textbox(
-                label="🔑 OpenAI API Key",
-                placeholder="sk-...",
-                type="password",
-                value=os.getenv("OPENAI_API_KEY", "")
-            )
-            agent_status = gr.Textbox(
-                label="Agent Status",
-                value="Not Initialized",
-                interactive=False
-            )
+            with gr.Column(scale=3):
+                api_key_input = gr.Textbox(
+                    label="🔑 OpenAI API Key",
+                    placeholder="sk-...",
+                    type="password",
+                    value=os.getenv("OPENAI_API_KEY", "")
+                )
+            with gr.Column(scale=2):
+                agent_status = gr.Textbox(
+                    label="Agent Status",
+                    value="Not Initialized",
+                    interactive=False
+                )
+            with gr.Column(scale=1):
+                init_agent_btn = gr.Button("🔄 Initialize Agent", variant="secondary")
         
         with gr.Tabs():
             # Single Task Tab
@@ -563,26 +576,64 @@ def create_gradio_interface():
         
         # Initialize agent when API key is provided
         def init_agent_sync(api_key):
-            return interface.initialize_agent(api_key)
+            if api_key and api_key.strip():
+                result, status = interface.initialize_agent(api_key)
+                return status
+            else:
+                return "Enter API Key to Initialize"
         
+        # Auto-initialize on startup if API key exists in environment
+        def auto_initialize():
+            api_key = os.getenv("OPENAI_API_KEY", "")
+            if api_key:
+                result, status = interface.initialize_agent(api_key)
+                return api_key, status
+            return "", "Enter API Key to Initialize"
+        
+        # Auto-initialize when interface loads
+        demo.load(
+            fn=auto_initialize,
+            outputs=[api_key_input, agent_status]
+        )
+        
+        # Manual initialization button
+        init_agent_btn.click(
+            fn=init_agent_sync,
+            inputs=[api_key_input],
+            outputs=[agent_status]
+        )
+        
+        # Re-initialize when API key changes
         api_key_input.change(
             fn=init_agent_sync,
             inputs=[api_key_input],
-            outputs=[gr.Textbox(visible=False), agent_status]
+            outputs=[agent_status]
         )
     
     return demo
 
 def main():
-    """Launch the Gradio interface"""
+    """Launch the Gradio interface - for direct execution"""
     try:
         # Create and launch the interface
         demo = create_gradio_interface()
         
+        # Find available port
+        import socket
+        port = 7860
+        for test_port in range(7860, 7870):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(('localhost', test_port))
+                    port = test_port
+                    break
+            except OSError:
+                continue
+        
         # Launch with custom settings
         demo.launch(
             server_name="0.0.0.0",  # Allow external access
-            server_port=7860,
+            server_port=port,
             share=False,  # Set to True to create a public link
             debug=True,
             show_error=True,
